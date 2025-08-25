@@ -1,4 +1,5 @@
 import express from "express";
+import { verifyToken } from "./firebaseBots.js";
 import cors from "cors";
 import {
   makeWASocket,
@@ -62,7 +63,7 @@ function broadcastQR(botId, data) {
 
 // Create a new bot or reconnect existing
 async function createBot(data) {
-  let botId = data.id;
+  let botId = data.id ;
   let name = data.name || "Default Bot";
   // Store all bot fields for use in message handling
   let botData = bots.get(botId) || {};
@@ -160,7 +161,7 @@ async function createBot(data) {
 //         },
 //       }
 // API: Create a new bot
-app.post("/bot", async (req, res) => {
+app.post("/bot", verifyToken, async (req, res) => {
   const data = req.body;
   let id = data.id;
   try {
@@ -174,7 +175,7 @@ app.post("/bot", async (req, res) => {
 });
 
 // API: Get QR code for a bot
-app.get("/qr/:botId", (req, res) => {
+app.get("/qr/:botId", verifyToken, (req, res) => {
   const botId = req.params.botId;
   const bot = bots.get(botId);
   if (!bot) return res.status(404).json({ error: "Bot not found" });
@@ -183,7 +184,7 @@ app.get("/qr/:botId", (req, res) => {
 });
 
 // API: Update a bot
-app.put("/bot/:botId", async (req, res) => {
+app.put("/bot/:botId", verifyToken, async (req, res) => {
   const botId = req.params.botId;
   const updateData = req.body;
   try {
@@ -200,16 +201,6 @@ app.put("/bot/:botId", async (req, res) => {
   }
 });
 
-// API: Set chatbot name
-app.post("/chatbot/:botId", (req, res) => {
-  const botId = req.params.botId;
-  const bot = bots.get(botId);
-  if (!bot) return res.status(404).json({ error: "Bot not found" });
-
-  bot.chatbotName = req.body.name || bot.chatbotName;
-  saveBotsToFile();
-  res.json({ success: true, name: bot.chatbotName });
-});
 
 // Load and reconnect all bots from Firestore on startup
 loadBotsFromFirebase();
