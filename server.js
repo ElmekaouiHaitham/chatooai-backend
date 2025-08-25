@@ -14,6 +14,7 @@ import path from "node:path";
 import { fileURLToPath } from "url";
 import { getAIResponse } from "./aiReply.js";
 import { getAllBots, incrementMessageCount } from "./firebaseBots.js";
+import { updateBotWhatsappStatus } from "./firebaseBots.js";
 
 const app = express();
 const port = 5000;
@@ -135,9 +136,15 @@ async function createBot(data) {
         (lastDisconnect.error = new Boom(lastDisconnect?.error))?.output
           ?.statusCode !== DisconnectReason.loggedOut;
       console.log("Connection closed. Reconnect:", shouldReconnect);
-      if (shouldReconnect) createBot(botId, botData.chatbotName);
+      if (shouldReconnect) createBot(data);
     } else if (connection === "open") {
       console.log("✅ Bot connected");
+      // Update whatsapp.status to 'connected' in Firestore
+      try {
+        await updateBotWhatsappStatus(botId, "connected");
+      } catch (err) {
+        console.error("Failed to update whatsapp.status in Firestore:", err);
+      }
     }
   });
 

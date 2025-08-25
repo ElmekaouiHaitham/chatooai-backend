@@ -108,3 +108,9 @@ export async function incrementMessageCount(botId) {
     "stats.messageCount": increment(1),
   });
 }
+export async function updateBotWhatsappStatus(botId, status) {
+  const botRef = doc(db, "bots", botId);
+  await updateDoc(botRef, {
+    "whatsapp.status": status,
+  });
+}
