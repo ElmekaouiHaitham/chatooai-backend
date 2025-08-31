@@ -14,12 +14,19 @@ import path from "node:path";
 import { fileURLToPath } from "url";
 import { getAIResponse } from "./aiReply.js";
 import { getAllBots, incrementMessageCount } from "./firebaseBots.js";
+
 import { updateBotWhatsappStatus } from "./firebaseBots.js";
+import { checkUserRateLimit } from "./rateLimit.js";
+import { saveBotsToFile, broadcastQR } from "./botUtils.js";
+
+
 
 const app = express();
 const port = 5000;
 app.use(cors());
 app.use(express.json());
+
+// Register API endpoints for user/plan/bot management
 
 // Store all bots: botId => { sock, qrCodeData, chatbotName }
 const bots = new Map();
@@ -41,26 +48,8 @@ async function loadBotsFromFirebase() {
   }
 }
 
-// Save bots info to file
-function saveBotsToFile() {
-  const arr = Array.from(bots.entries()).map(([botId, bot]) => ({
-    botId,
-    chatbotName: bot.chatbotName || "Default Bot",
-  }));
-  // Ensure directory exists before writing
-  fs.ensureDirSync(path.dirname(BOTS_FILE));
-  fs.writeFileSync(BOTS_FILE, JSON.stringify(arr, null, 2));
-}
-
 // WebSocket server for QR code updates
 const wss = new WebSocketServer({ noServer: true });
-
-// Broadcast QR code to all clients with botId
-function broadcastQR(botId, data) {
-  wss.clients.forEach((client) => {
-    client.send(JSON.stringify({ botId, qr: data }));
-  });
-}
 
 // Create a new bot or reconnect existing
 async function createBot(data) {
@@ -83,7 +72,7 @@ async function createBot(data) {
   botData.qrCodeData = null;
   botData.chatbotName = name || botData.chatbotName || "Default Bot";
   bots.set(botId, botData);
-  saveBotsToFile();
+  saveBotsToFile(bots, BOTS_FILE, fs, path);
   // listen for incoming messages
   sock.ev.on("messages.upsert", async (m) => {
     if (m.type !== "notify") return;
@@ -98,9 +87,22 @@ async function createBot(data) {
 
     console.log("📩 Received:", text);
 
-    // reply with AI-generated message to any text, using all bot fields
+    // Rate limit check before replying
     if (text) {
       try {
+        const userId = botData.uid;
+        if (!userId) {
+          await sock.sendMessage(sender, { text: "[Error] User not found for this bot." });
+          return;
+        }
+        // Use helper
+        const rate = await checkUserRateLimit(userId, 'messages');
+        if (!rate.allowed) {
+          let msg = '[Rate Limit] You have reached your monthly message limit for your plan. Upgrade to continue.';
+          if (rate.reason === 'bot_limit') msg = '[Rate Limit] You have reached your monthly bot creation limit for your plan.';
+          await sock.sendMessage(sender, { text: msg });
+          return;
+        }
         // Compose a system prompt using bot's personality, autoReply, etc.
         let systemPrompt = `You are a WhatsApp chatbot named '${
           botData.name || "Bot"
@@ -118,6 +120,23 @@ async function createBot(data) {
         await sock.sendMessage(sender, { text: aiReply });
         console.log("🤖 Replied:", aiReply);
         await incrementMessageCount(botId);
+        // Increment user's monthlyUsage.messages in Firestore
+        try {
+          const admin = await import('firebase-admin');
+          const userRef = admin.firestore().doc(`users/${userId}`);
+          const userSnap = await userRef.get();
+          if (userSnap.exists) {
+            const user = userSnap.data();
+            let monthlyUsage = Array.isArray(user.monthlyUsage) ? user.monthlyUsage : [];
+            if (monthlyUsage.length > 0) {
+              // Increment messages for the last entry
+              monthlyUsage[monthlyUsage.length - 1].messages = (monthlyUsage[monthlyUsage.length - 1].messages || 0) + 1;
+              await userRef.update({ monthlyUsage });
+            }
+          }
+        } catch (err) {
+          console.error('Failed to increment user monthlyUsage.messages:', err);
+        }
       } catch (err) {
         await sock.sendMessage(sender, { text: "[AI error] " + err.message });
       }
@@ -129,9 +148,25 @@ async function createBot(data) {
     const { connection, lastDisconnect, qr } = update;
     if (qr) {
       botData.qrCodeData = await qrcode.toDataURL(qr);
-      broadcastQR(botId, botData.qrCodeData);
+  broadcastQR(wss, botId, botData.qrCodeData);
     }
     if (connection === "close") {
+      // Update whatsapp.status to 'disconnected' in Firestore
+      try {
+        await updateBotWhatsappStatus(botId, "disconnected");
+      } catch (err) {
+        console.error("Failed to update whatsapp.status to disconnected in Firestore:", err);
+      }
+      // Delete auth_info_<botId> folder
+      // try {
+      //   const authFolder = path.join(__dirname, `auth_info_${botId}`);
+      //   if (fs.existsSync(authFolder)) {
+      //     fs.removeSync(authFolder);
+      //     console.log(`Deleted auth folder: ${authFolder}`);
+      //   }
+      // } catch (err) {
+      //   console.error(`Failed to delete auth_info_${botId} folder:`, err);
+      // }
       const shouldReconnect =
         (lastDisconnect.error = new Boom(lastDisconnect?.error))?.output
           ?.statusCode !== DisconnectReason.loggedOut;
@@ -170,15 +205,49 @@ async function createBot(data) {
 // API: Create a new bot
 app.post("/bot", verifyToken, async (req, res) => {
   const data = req.body;
-  let id = data.id;
   try {
-    if (!id) return res.status(400).json({ error: "botId is required" });
+    const { uid, name, description, aiModel, personality, autoReply } = data;
+
+    if (!uid || !name) {
+      return res.status(400).json({ error: "User ID (uid) and bot name are required" });
+    }
+
+    // Check user's monthly bot creation limit before creating a new bot
+    const rate = await checkUserRateLimit(uid, 'bots');
+    if (!rate.allowed) {
+      return res.status(403).json({ error: '[Rate Limit] You have reached your monthly bot creation limit for your plan. Upgrade to continue.' });
+    }
+
+    // Create bot in Firebase
+    const admin = await import('firebase-admin');
+    const botRef = admin.firestore().collection('bots').doc();
+    const botId = botRef.id;
+
+    await botRef.set({
+      uid,
+      name,
+      description,
+      aiModel,
+      personality,
+      autoReply,
+      whatsapp: {
+        status: "disconnected",
+      },
+      stats: {
+        messageCount: 0,
+        totalUsers: 0,
+      },
+    });
+
+    // Save bot to in-memory storage
+    const bot = await createBot({ id: botId, ...data });
+    saveBotsToFile(bots, BOTS_FILE, fs, path);
+
+    res.json({ success: true, botId });
   } catch (e) {
     console.error("Error in /bot:", e);
+    res.status(500).json({ error: "Failed to create bot", details: e.message });
   }
-  const bot = await createBot(data);
-  saveBotsToFile();
-  res.json({ success: true, botId: id });
 });
 
 // API: Get QR code for a bot

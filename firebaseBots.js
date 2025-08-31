@@ -103,10 +103,29 @@ export async function getAllBots() {
  */
 export async function incrementMessageCount(botId) {
   const botRef = doc(db, "bots", botId);
-  // Atomically increment the message count
+  // Atomically increment the message count for the bot
   await updateDoc(botRef, {
     "stats.messageCount": increment(1),
   });
+
+  // Also increment the user's monthlyUsage.messages for the current month
+  // Get the bot to find the user
+  const botSnap = await getDoc(botRef);
+  if (!botSnap.exists()) return;
+  const bot = botSnap.data();
+  const userId = bot.uid;
+  if (!userId) return;
+  // Use Firestore Admin SDK for backend
+  const userRef = admin.firestore().doc(`users/${userId}`);
+  const userSnap = await userRef.get();
+  if (!userSnap.exists) return;
+  const user = userSnap.data();
+  let monthlyUsage = Array.isArray(user.monthlyUsage) ? user.monthlyUsage : [];
+  if (monthlyUsage.length > 0) {
+    // Increment messages for the last entry
+    monthlyUsage[monthlyUsage.length - 1].messages = (monthlyUsage[monthlyUsage.length - 1].messages || 0) + 1;
+    await userRef.update({ monthlyUsage });
+  }
 }
 export async function updateBotWhatsappStatus(botId, status) {
   const botRef = doc(db, "bots", botId);
