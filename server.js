@@ -11,7 +11,14 @@ dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 5000;
-app.use(cors());
+app.use(
+  cors({
+    origin: [
+      process.env.CORS_ORIGIN // local dev
+    ],
+
+  })
+);
 app.use(express.json());
 
 // Register API endpoints for user/plan/bot management
@@ -42,7 +49,7 @@ loadBotsFromFirebase();
 
 // Start HTTP server and handle WebSocket upgrades
 const server = app.listen(port, () =>
-  console.log(`Backend running on http://localhost:${port}`)
+  console.log(`Backend running on ${port}`)
 );
 
 server.on("upgrade", (req, socket, head) => {
