@@ -58,7 +58,7 @@ export async function createBot(data) {
   Object.assign(botData, data);
 
   const { state, saveCreds } = await useMultiFileAuthState(
-    `auth_info_${botId}`
+    `auth/auth_info_${botId}`
   );
   const sock = makeWASocket({ auth: state });
 
