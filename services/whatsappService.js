@@ -6,9 +6,6 @@ import {
 import qrcode from "qrcode";
 import { Boom } from "@hapi/boom";
 import { WebSocketServer } from "ws";
-import fs from "fs-extra";
-import path from "node:path";
-import { fileURLToPath } from "url";
 import { getAIResponse } from "./aiReplyService.js";
 import {
   getAllBots,
@@ -16,14 +13,11 @@ import {
   updateBotWhatsappStatus,
 } from "./firebaseService.js";
 import { checkUserRateLimit } from "./rateLimit.js";
-import { saveBotsToFile, broadcastQR } from "../utils/botUtils.js";
+import { broadcastQR } from "../utils/botUtils.js";
 
 const bots = new Map();
 const wss = new WebSocketServer({ noServer: true });
 export { wss };
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const BOTS_FILE = path.join(__dirname, "../user-bots.json");
 
 export function getBotsMap() {
   return bots;
@@ -66,7 +60,6 @@ export async function createBot(data) {
   botData.qrCodeData = null;
   botData.chatbotName = name || botData.chatbotName || "Default Bot";
   bots.set(botId, botData);
-  saveBotsToFile(bots, BOTS_FILE, fs, path);
 
   sock.ev.on("messages.upsert", async (m) => {
     if (m.type !== "notify") return;
@@ -139,6 +132,11 @@ export async function createBot(data) {
     const { connection, lastDisconnect, qr } = update;
     if (qr) {
       botData.qrCodeData = await qrcode.toDataURL(qr);
+      try {
+        await updateBotWhatsappStatus(botId, "disconnected", botData.qrCodeData);
+      } catch (err) {
+        console.error("Failed to update whatsapp QR in Firestore:", err);
+      }
       broadcastQR(wss, botId, botData.qrCodeData);
     }
     if (connection === "close") {

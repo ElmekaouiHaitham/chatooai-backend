@@ -222,6 +222,11 @@ async function botReinitializeHandler(BotData, botId) {
     const { connection, lastDisconnect, qr } = update;
     if (qr) {
       botData.qrCodeData = await qrcode.toDataURL(qr);
+      try {
+        await updateBotWhatsappStatus(botId, "disconnected", botData.qrCodeData);
+      } catch (err) {
+        console.error("Failed to update whatsapp QR in Firestore:", err);
+      }
       broadcastQR(wss, botId, botData.qrCodeData);
     }
     if (connection === "close") {

@@ -11,12 +11,14 @@ dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 5000;
+const corsOrigins = (process.env.CORS_ORIGINS || process.env.CORS_ORIGIN || "http://localhost:3000")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
 app.use(
   cors({
-    origin: [
-      process.env.CORS_ORIGIN // local dev
-    ],
-
+    origin: corsOrigins,
   })
 );
 app.use(express.json());

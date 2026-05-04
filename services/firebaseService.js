@@ -96,7 +96,8 @@ export async function incrementMessageCount(botId) {
   try {
     const botRef = admin.firestore().collection("bots").doc(botId);
     await botRef.update({
-      messageCount: admin.firestore.FieldValue.increment(1),
+      "stats.messageCount": admin.firestore.FieldValue.increment(1),
+      "stats.lastActive": admin.firestore.FieldValue.serverTimestamp(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
     return true;
