@@ -2,14 +2,14 @@
 
 ChatooAI Backend is the Node.js service behind the ChatooAI multi WhatsApp chatbot platform. It exposes an Express API, verifies Firebase Auth tokens, stores bot/user/plan state in Firestore, manages WhatsApp Web sessions through Baileys, broadcasts QR codes over WebSockets, and calls OpenRouter for AI-generated replies.
 
-The product vision is a scalable SaaS-style system for agencies, resellers, and businesses that want to run multiple AI WhatsApp bots from one dashboard. This backend is a functional foundation for that vision, but it is not yet a complete production SaaS backend.
+The product vision is a scalable SaaS-style system for agencies, resellers, and businesses that want to run multiple AI WhatsApp bots from one dashboard. This backend contains the core service layer for that vision, with clear contribution opportunities around scaling, billing, session storage, testing, and production hardening.
 
 ## Repository Links
 
 - Backend repository: [https://github.com/ElmekaouiHaitham/chatooai-backend](https://github.com/ElmekaouiHaitham/chatooai-backend)
 - Frontend repository: [https://github.com/ElmekaouiHaitham/chatooai-frontend](https://github.com/ElmekaouiHaitham/chatooai-frontend)
-- Local API demo: [http://localhost:5000](http://localhost:5000)
-- Live website: add the deployed frontend URL here when available.
+- Live website: [https://chatooai.vercel.app](https://chatooai.vercel.app)
+- Demo video: [https://www.youtube.com/watch?v=v2ytRQe4EOA](https://www.youtube.com/watch?v=v2ytRQe4EOA)
 
 ## Tech Stack
 
@@ -47,7 +47,9 @@ The product vision is a scalable SaaS-style system for agencies, resellers, and 
 - Basic rate-limit checks for bot creation and message replies based on plan usage.
 - AI reply generation through OpenRouter.
 
-## Partially Implemented Or Needs Hardening
+## Things To Work On
+
+These are contribution opportunities. The backend has the core service pieces in place, and the areas below are the most valuable next steps:
 
 - Baileys auth credentials are still stored locally under `auth/`. Bot metadata and runtime status are in Firestore, but WhatsApp session credential storage is not cloud/distributed yet.
 - Reconnecting every Firestore bot on startup is simple, but may need job queues, sharding, or worker separation for larger deployments.
@@ -58,7 +60,7 @@ The product vision is a scalable SaaS-style system for agencies, resellers, and 
 - WhatsApp connection lifecycle handling should be hardened for production disconnect/retry scenarios.
 - AI prompt behavior is basic: bot name, personality, and description are used, but there is no conversation memory, retrieval, tooling, moderation, or guardrail layer.
 
-## Not Implemented Yet
+## Bigger Feature Opportunities
 
 - Real payment provider integration.
 - Cloud storage for Baileys auth sessions.
@@ -74,16 +76,16 @@ The product vision is a scalable SaaS-style system for agencies, resellers, and 
 - Automated tests.
 - Docker/deployment files.
 
-## Relationship To The Product Description
+## Product Direction
 
-The CodeCanyon-style description presents an ideal "multi WhatsApp chatbot" product with easy QR login, smart AI replies, multi-client management, and flexible deployment. This backend supports the core technical direction, but the current implementation differs from that description in important ways:
+The CodeCanyon-style description presents an ideal "multi WhatsApp chatbot" product with easy QR login, smart AI replies, multi-client management, and flexible deployment. This backend supports the core technical direction, and the differences below are good places for contributors to help complete the product:
 
 - It does use Node.js and Express.
 - It does use QR-based WhatsApp connection through Baileys.
 - It does support multiple bot documents and sessions.
 - It does use OpenRouter for AI replies.
 - It is not database-free anymore; Firestore is the application database.
-- It does not yet provide full production scaling, payment automation, deployment packaging, or a complete support/customization workflow.
+- Full production scaling, payment automation, deployment packaging, and a complete support/customization workflow are good contribution targets.
 
 ## Getting Started
 
@@ -114,7 +116,7 @@ Fill in `.env`, then start the backend:
 npm start
 ```
 
-The API defaults to [http://localhost:5000](http://localhost:5000). The WebSocket upgrade is handled on the same server.
+The API defaults to the port configured by `PORT`, or `5000` when no port is set. The WebSocket upgrade is handled on the same server.
 
 ## Environment Variables
 
